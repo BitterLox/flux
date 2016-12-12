@@ -10,7 +10,7 @@ type Action struct {
 // Each actions contained in a are dispatched sequentially within the call.
 // eg a[1] will be dispached once a[0] dispatch is complete.
 // Each Dispatch call is perform within a new goroutine,
-// which mean 2 different dispatch call will be executed in paralel.
+// which mean 2 different dispatch call will be executed in parallel.
 func Dispatch(a ...Action) {
 	go dispatchActions(a)
 }
