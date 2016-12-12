@@ -6,3 +6,87 @@
 
 Package flux is a Go implementation of the [Flux](https://facebook.github.io/flux/docs/overview.html) design pattern.
 
+## Install
+```
+got get -u github.com/murlokswarm/flux
+```
+
+## How to use?
+
+### Create and register a store
+```go
+// Implemtation.
+type HelloStore struct {
+	flux.Store
+}
+
+func (s *HelloStore) OnDispatch(a flux.Action) {
+	if a.Name != "greet" {
+		return
+	}
+
+	s.Emit(flux.Event{
+		Name:    "greeted",
+		Payload: fmt.Sprintf("Hello, %v", a.Payload),
+	})
+}
+
+// Intialization and registration.
+var (
+	helloStore flux.Storer
+)
+
+func init() {
+	helloStore := &HelloStore{}
+	flux.Register(helloStore)
+
+}
+
+```
+
+### Create and register a view
+```go
+type HelloView struct {
+	Greeting string
+}
+
+func (v *HelloView) OnMount() {
+    // Listen events from helloStore.
+	helloStore.Register(v)
+}
+
+func (v *HelloView) OnDismount() {
+    // Stop listening events from helloStore.
+    // Avoid memory leak.
+	helloStore.Unregister(v)
+}
+
+func (v *HelloView) Render() string {
+	return `
+<div>
+    <h1>{{html .Greeting}}</h1>
+    <input _onchange="OnInputChange" />
+</div>
+    `
+}
+
+func (v *HelloView) OnInputChange(a app.ChangeArg) {
+    // Dispatch an action.
+	flux.Dispatch(flux.Action{
+		Name:    "greet",
+		Payload: a.Value,
+	})
+}
+
+func (v *HelloView) OnStoreEvent(e flux.Event) {
+	if e.Name != "greeted" {
+		return
+	}
+
+    // Handling events from helloStore.
+	v.Gretting = e.Payload
+	app.Render(v)
+}
+```
+
+
