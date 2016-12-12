@@ -1,88 +1,160 @@
 package flux
 
-import "sync"
+import (
+	"reflect"
+	"sync"
 
-// Store represents a store in the flux design pattern.
-type Store interface {
+	"github.com/murlokswarm/log"
+)
+
+var (
+	// Immutable vars related to store management.
+	emitChan = make(chan emitter, 256)
+
+	// Mutable vars related to store management, the mutex must be locked to
+	// access them concurrently.
+	storesMutex sync.Mutex
+	stores      []Storer
+)
+
+// Storer defines the interface to implement a store.
+// Stores are subject to concurrency.
+// Implementations should take this in consideration and protect mutable fields.
+type Storer interface {
+	// Once a store is registered, OnDispatch will be called for every dispatched
+	// actions.
 	OnDispatch(a Action)
 
-	ID() StoreID
+	Register(l Listener)
 
-	SetID(ID StoreID)
+	Unregister(l Listener)
+
+	Emit(e Event)
 }
 
-// StoreID represents a store identifier.
-type StoreID int
+// Register registers s as dispatch target.
+// Does nothing if s is already registered.
+// Panic if s is not a pointer.
+func Register(s Storer) {
+	if v := reflect.ValueOf(s); v.Kind() != reflect.Ptr {
+		log.Panicf("s is not a pointer: %T", s)
+	}
 
-// StoreBase is the base struct which should be embedded in every store implementation.
-type StoreBase struct {
-	id             StoreID
-	listeners      map[ListenerID]Listener
-	lastListenerID ListenerID
-	mtx            sync.Mutex
+	storesMutex.Lock()
+	defer storesMutex.Unlock()
+
+	for _, store := range stores {
+		if store == s {
+			return
+		}
+	}
+
+	stores = append(stores, s)
 }
 
-// ID returns the store ID.
-func (s *StoreBase) ID() StoreID {
-	return s.id
-}
+// Unregister removes s from dispatch targets.
+// Does nothing if s is not registered.
+func Unregister(s Storer) {
+	storesMutex.Lock()
+	defer storesMutex.Unlock()
 
-// SetID sets the ID of the store.
-// Used internally by the dispatcher.
-// Should not be called.
-func (s *StoreBase) SetID(ID StoreID) {
-	s.id = ID
-}
-
-// AddListener adds a listener to the store.
-func (s *StoreBase) AddListener(l Listener) ListenerID {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	s.lastListenerID++
-	id := s.lastListenerID
-
-	s.listeners[id] = l
-	return id
-}
-
-// RemoveListener removes a listener from the store.
-func (s *StoreBase) RemoveListener(ID ListenerID) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	delete(s.listeners, ID)
-}
-
-// Emit sends an event by an event identifier to all registered listeners.
-func (s *StoreBase) Emit(ID EventID) {
-	s.EmitEvent(Event{
-		ID: ID,
-	})
-}
-
-// EmitWithPayload sends an event with a payload by
-// an event identifier to all registered listeners.
-func (s *StoreBase) EmitWithPayload(ID EventID, payload interface{}) {
-	s.EmitEvent(Event{
-		ID:      ID,
-		Payload: payload,
-	})
-}
-
-// EmitEvent sends an event to all registered listeners.
-func (s *StoreBase) EmitEvent(e Event) {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	for _, l := range s.listeners {
-		l(e)
+	for i, store := range stores {
+		if store == s {
+			copy(stores[i:], stores[i+1:])
+			stores[len(stores)-1] = nil
+			stores = stores[:len(stores)-1]
+			return
+		}
 	}
 }
 
-// NewStoreBase creates a new instance of StoreBase.
-func NewStoreBase() *StoreBase {
-	return &StoreBase{
-		listeners: map[ListenerID]Listener{},
+// Listener describes a listener.
+// Listeners should be implemented as pointers.
+type Listener interface {
+	OnStoreEvent(e Event)
+}
+
+// Event represents data to be passed to a listener.
+type Event struct {
+	Name    string
+	Payload interface{}
+	Error   error
+}
+
+type emitter struct {
+	listeners []Listener
+	event     Event
+}
+
+// Store implements logic to register/unregister a listener and emit events.
+// Should be embedded in Storer implementations.
+type Store struct {
+	mutex     sync.Mutex
+	listeners []Listener
+}
+
+// Register registers l for event emissions.
+// Does nothing if l is already registered.
+// Panic if l is not a pointer.
+func (s *Store) Register(l Listener) {
+	if val := reflect.ValueOf(l); val.Kind() != reflect.Ptr {
+		log.Panicf("l is not a pointer: %T", l)
 	}
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	for _, listener := range s.listeners {
+		if l == listener {
+			return
+		}
+	}
+
+	s.listeners = append(s.listeners, l)
+}
+
+// Unregister removes l from event emissions.
+// Does nothing if l is not registered.
+func (s *Store) Unregister(l Listener) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	for i, listener := range s.listeners {
+		if l == listener {
+			copy(s.listeners[i:], s.listeners[i+1:])
+			s.listeners[len(s.listeners)-1] = nil
+			s.listeners = s.listeners[:len(s.listeners)-1]
+			return
+		}
+	}
+}
+
+// Emit emits a event.
+// Calls OnEvent method from all registered listeners.
+// All emissions are guaranteed to run on the same goroutine.
+func (s *Store) Emit(e Event) {
+	s.mutex.Lock()
+
+	listeners := make([]Listener, len(s.listeners))
+	copy(listeners, s.listeners)
+
+	s.mutex.Unlock()
+
+	em := emitter{
+		listeners: listeners,
+		event:     e,
+	}
+	emitChan <- em
+}
+
+func startEmit() {
+	for em := range emitChan {
+		for _, l := range em.listeners {
+			l.OnStoreEvent(em.event)
+		}
+	}
+}
+
+func init() {
+	go startEmit()
 }

@@ -1,74 +1,128 @@
 package flux
 
 import (
-	"fmt"
 	"testing"
+	"time"
 )
 
-var (
-	SimpleListener = func(e Event) {
-		fmt.Println("SimpleListener called")
-	}
-)
-
-func TestNewStoreBase(t *testing.T) {
-	NewStoreBase()
+type StoreTest struct {
+	Store
+	OnDispatched bool
 }
 
-func TestStoreBaseID(t *testing.T) {
-	s := NewStoreBase()
-	s.SetID(42)
+func (s *StoreTest) OnDispatch(a Action) {
+	s.Emit(Event{
+		Name:    "Success",
+		Payload: 42,
+	})
+	s.OnDispatched = true
+}
 
-	if id := s.ID(); id != StoreID(42) {
-		t.Error("id should be 42:", id)
+type BadStore struct {
+	*Store
+	OnDispatched bool
+}
+
+func (s BadStore) OnDispatch(a Action) {}
+
+type ListenerTest struct {
+	OnEventCalled bool
+}
+
+func (l *ListenerTest) OnStoreEvent(e Event) {
+	l.OnEventCalled = true
+}
+
+type BadListener struct{}
+
+func (l BadListener) OnStoreEvent(e Event) {}
+
+func TestRegister(t *testing.T) {
+	s := &StoreTest{}
+	Register(s)
+
+	if l := len(stores); l != 1 {
+		t.Error("stores should have 1 element:", l)
+	}
+
+	Register(s)
+
+	if l := len(stores); l != 1 {
+		t.Error("stores should have 1 element:", l)
+	}
+
+	Unregister(s)
+
+	if l := len(stores); l != 0 {
+		t.Error("stores should be empty:", l)
 	}
 }
 
-func TestStoreBaseAddListener(t *testing.T) {
-	s := NewStoreBase()
+func TestRegisterPanic(t *testing.T) {
+	defer func() { recover() }()
 
-	s.AddListener(SimpleListener)
+	s := BadStore{}
+	Register(s)
+	t.Error("should panic")
+}
+
+func TestStoreRegister(t *testing.T) {
+	s := &Store{}
+	l := &ListenerTest{}
+	s.Register(l)
 
 	if l := len(s.listeners); l != 1 {
-		t.Error("l should be 1:", l)
+		t.Error("s.listeners should have 1 element:", l)
 	}
-}
 
-func TestStoreBaseRemoveListener(t *testing.T) {
-	s := NewStoreBase()
-
-	lid := s.AddListener(SimpleListener)
-	s.AddListener(SimpleListener)
-
-	s.RemoveListener(lid)
+	s.Register(l)
 
 	if l := len(s.listeners); l != 1 {
-		t.Fatal("l should be 1:", l)
+		t.Error("s.listeners should have 1 element:", l)
+	}
+
+	s.Unregister(l)
+
+	if l := len(s.listeners); l != 0 {
+		t.Error("s.listeners should be empty:", l)
 	}
 }
 
-func TestStoreBaseEmit(t *testing.T) {
-	s := NewStoreBase()
-	c := make(chan bool)
+func TestStoreRegisterPanic(t *testing.T) {
+	defer func() { recover() }()
 
-	l := func(e Event) {
-		t.Log("l ->", e)
-		c <- true
+	s := &Store{}
+	l := BadListener{}
+	s.Register(l)
+	t.Error("should panic")
+}
+
+func TestStoreEmit(t *testing.T) {
+	l := &ListenerTest{}
+	s := &Store{}
+
+	s.Register(l)
+	s.Emit(Event{
+		Name: "TestEmit",
+	})
+	time.Sleep(time.Millisecond * 1)
+
+	if !l.OnEventCalled {
+		t.Error("l.OnEventCalled should be true")
+	}
+}
+
+func BenchmarkEmit(b *testing.B) {
+	b.StopTimer()
+	s := StoreTest{}
+
+	for i := 0; i < 500; i++ {
+		s.Register(&ListenerTest{})
 	}
 
-	l2 := func(e Event) {
-		t.Log("l2 ->", e)
-		c <- true
+	b.StartTimer()
+
+	for i := 0; i < b.N; i++ {
+		s.Emit(Event{Name: "Benchmark", Payload: 42})
 	}
-
-	s.AddListener(l)
-	s.AddListener(l2)
-
-	go s.Emit("test")
-	go s.EmitWithPayload("test", "j'aime les filles")
-
-	<-c
-	<-c
-	<-c
-	<-c
 }
