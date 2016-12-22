@@ -122,7 +122,7 @@ func (s *Store) Unregister(l Listener) {
 	}
 }
 
-// Emit emits a event.
+// Emit emits an event.
 // Calls OnEvent method from all registered listeners.
 // All emissions are guaranteed to run the app UI goroutine.
 func (s *Store) Emit(e Event) {
