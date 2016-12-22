@@ -4,13 +4,11 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/murlokswarm/app"
 	"github.com/murlokswarm/log"
 )
 
 var (
-	// Immutable vars related to store management.
-	emitChan = make(chan emitter, 256)
-
 	// Mutable vars related to store management, the mutex must be locked to
 	// access them concurrently.
 	storesMutex sync.Mutex
@@ -81,11 +79,6 @@ type Event struct {
 	Error   error
 }
 
-type emitter struct {
-	listeners []Listener
-	event     Event
-}
-
 // Store implements logic to register/unregister a listener and emit events.
 // Should be embedded in Storer implementations.
 type Store struct {
@@ -131,30 +124,16 @@ func (s *Store) Unregister(l Listener) {
 
 // Emit emits a event.
 // Calls OnEvent method from all registered listeners.
-// All emissions are guaranteed to run on the same goroutine.
+// All emissions are guaranteed to run the app UI goroutine.
 func (s *Store) Emit(e Event) {
 	s.mutex.Lock()
-
 	listeners := make([]Listener, len(s.listeners))
 	copy(listeners, s.listeners)
-
 	s.mutex.Unlock()
 
-	em := emitter{
-		listeners: listeners,
-		event:     e,
-	}
-	emitChan <- em
-}
-
-func startEmit() {
-	for em := range emitChan {
-		for _, l := range em.listeners {
-			l.OnStoreEvent(em.event)
+	for _, l := range listeners {
+		app.UIChan <- func() {
+			l.OnStoreEvent(e)
 		}
 	}
-}
-
-func init() {
-	go startEmit()
 }
