@@ -132,8 +132,12 @@ func (s *Store) Emit(e Event) {
 	s.mutex.Unlock()
 
 	for _, l := range listeners {
-		app.UIChan <- func() {
-			l.OnStoreEvent(e)
-		}
+		emit(l, e)
+	}
+}
+
+func emit(l Listener, e Event) {
+	app.UIChan <- func() {
+		l.OnStoreEvent(e)
 	}
 }
