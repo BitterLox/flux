@@ -23,6 +23,26 @@ func TestDispatch(t *testing.T) {
 	Dispatch()
 }
 
+func TestDispatchError(t *testing.T) {
+	s := &StoreTest{
+		ThrowError: true,
+	}
+	Register(s)
+	defer Unregister(s)
+
+	a := Action{
+		Name:    "Action-Test",
+		Payload: 42,
+	}
+	Dispatch(a, a)
+
+	time.Sleep(time.Millisecond)
+
+	if s.OnDispatched {
+		t.Error("s.OnDispatched should be false")
+	}
+}
+
 func BenchmarkDispatch(b *testing.B) {
 	b.StopTimer()
 

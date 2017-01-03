@@ -16,12 +16,13 @@ var (
 )
 
 // Storer defines the interface to implement a store.
+// Dispatch chain stops if error is not nil.
 // Stores are subject to concurrency.
 // Implementations should take this in consideration and protect mutable fields.
 type Storer interface {
 	// Once a store is registered, OnDispatch will be called for every dispatched
 	// actions.
-	OnDispatch(a Action)
+	OnDispatch(a Action) error
 
 	Register(l Listener)
 

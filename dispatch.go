@@ -17,19 +17,22 @@ func Dispatch(a ...Action) {
 
 func dispatchActions(actions []Action) {
 	for _, a := range actions {
-		dispatch(a)
+		if err := dispatch(a); err != nil {
+			return
+		}
 	}
 }
 
-func dispatch(a Action) {
+func dispatch(a Action) error {
 	storesMutex.Lock()
-
 	storescpy := make([]Storer, len(stores))
 	copy(storescpy, stores)
-
 	storesMutex.Unlock()
 
 	for _, s := range storescpy {
-		s.OnDispatch(a)
+		if err := s.OnDispatch(a); err != nil {
+			return err
+		}
 	}
+	return nil
 }
