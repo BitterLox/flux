@@ -1,6 +1,7 @@
 package flux
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -8,14 +9,20 @@ import (
 type StoreTest struct {
 	Store
 	OnDispatched bool
+	ThrowError   bool
 }
 
-func (s *StoreTest) OnDispatch(a Action) {
+func (s *StoreTest) OnDispatch(a Action) error {
+	if s.ThrowError {
+		return errors.New("store error")
+	}
+
 	s.Emit(Event{
 		Name:    "Success",
 		Payload: 42,
 	})
 	s.OnDispatched = true
+	return nil
 }
 
 type BadStore struct {
@@ -23,7 +30,9 @@ type BadStore struct {
 	OnDispatched bool
 }
 
-func (s BadStore) OnDispatch(a Action) {}
+func (s BadStore) OnDispatch(a Action) error {
+	return nil
+}
 
 type ListenerTest struct {
 	OnEventCalled bool
