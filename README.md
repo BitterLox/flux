@@ -83,9 +83,11 @@ func (v *HelloView) OnStoreEvent(e flux.Event) {
 		return
 	}
 
-    // Handling events from helloStore.
-	v.Gretting = e.Payload
-	app.Render(v)
+	// Handling events from helloStore.
+	if greet, ok := e.Payload.(string); ok{
+		v.Gretting = greet
+		app.Render(v)
+	}
 }
 ```
 
