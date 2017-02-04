@@ -65,7 +65,7 @@ func (v *HelloView) Render() string {
 	return `
 <div>
     <h1>{{html .Greeting}}</h1>
-    <input _onchange="OnInputChange" />
+    <input onchange="OnInputChange" />
 </div>
     `
 }
