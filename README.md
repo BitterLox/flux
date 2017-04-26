@@ -8,7 +8,7 @@ Package flux is a Go implementation of the [Flux](https://facebook.github.io/flu
 
 ## Install
 ```
-got get -u github.com/murlokswarm/flux
+go get -u github.com/murlokswarm/flux
 ```
 
 ## How to use?
