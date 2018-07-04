@@ -138,7 +138,7 @@ func (s *Store) Emit(e Event) {
 }
 
 func emit(l Listener, e Event) {
-	app.UIChan <- func() {
+	app.CallOnUIGoroutine <- func() {
 		l.OnStoreEvent(e)
 	}
 }
